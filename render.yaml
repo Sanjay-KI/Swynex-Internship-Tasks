@@ -1,0 +1,14 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: secure-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: API_KEY
+        generateValue: true   # Render creates a random key; view it in the dashboard
+      - key: SEED_DATA
+        value: "true"

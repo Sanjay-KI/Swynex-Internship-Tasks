@@ -1,13 +1,14 @@
 {
-  "name": "backend-service",
-  "version": "2.0.0",
-  "description": "Node.js backend service with SQLite database and CRUD API for tasks",
-  "main": "server.js",
+  "name": "secure-api",
+  "version": "1.0.0",
+  "description": "Express API with API-key auth, payload validation and consistent errors",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node src/server.js",
+    "test": "node --test test/"
   },
-  "engines": {
-    "node": ">=22.13"
-  },
-  "license": "MIT"
+  "dependencies": {
+    "express": "^4.19.2",
+    "zod": "^3.23.8"
+  }
 }

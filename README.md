@@ -1,93 +1,97 @@
-# Backend Service: Tasks API with SQLite
+# Secure API
 
-A Node.js backend service with a health-check endpoint, environment configuration, and a full CRUD API for a `tasks` resource stored in a SQLite database. It has no npm dependencies.
+A small Express API demonstrating:
 
-## Requirements
-- Node.js 22.13 or newer (uses the built-in `node:sqlite` module)
+- **Authentication**: `/items` routes require an API key in the `x-api-key` header
+- **Payload validation**: `POST /items` is validated with [Zod](https://zod.dev)
+- **Consistent errors**: every error uses the same JSON shape
 
 ## Setup
-1. Clone the repository:
 
-       git clone <repo-url>
-       cd backend-service
+```bash
+npm install
+cp .env.example .env      # then edit API_KEY
+export API_KEY=your-secret-key   # (Windows PowerShell: $env:API_KEY="your-secret-key")
+npm start
+```
 
-2. (Optional) Create a .env file from env.example and edit the values:
-
-       cp env.example .env
-
-3. Start the server (the database file and table are created automatically):
-
-       npm start
-
-## Configuration
-| Variable     | Default         | Description              |
-|--------------|-----------------|--------------------------|
-| PORT         | 3000            | Port to listen on        |
-| HOST         | 0.0.0.0         | Interface to bind        |
-| NODE_ENV     | development     | Environment name         |
-| SERVICE_NAME | backend-service | Name in responses        |
-| DB_PATH      | tasks.db        | SQLite database file     |
-
-## Task resource
-| Field       | Type   | Rules                                          |
-|-------------|--------|------------------------------------------------|
-| id          | number | Auto-generated                                 |
-| title       | string | Required, 1-100 characters                     |
-| description | string | Optional, max 500 characters, default empty    |
-| status      | string | todo (default), in_progress or done            |
-| created_at  | string | Auto-generated (ISO timestamp)                 |
-| updated_at  | string | Auto-updated (ISO timestamp)                   |
+Server runs at `http://localhost:3000`.
 
 ## Endpoints
-| Method | Path              | Description                              | Success |
-|--------|-------------------|------------------------------------------|---------|
-| GET    | /health           | Health check (includes database check)   | 200     |
-| POST   | /tasks            | Create a task                            | 201     |
-| GET    | /tasks            | List tasks (optional ?status=done)       | 200     |
-| GET    | /tasks/:id        | Get one task                             | 200     |
-| PUT    | /tasks/:id        | Replace a task (title required)          | 200     |
-| PATCH  | /tasks/:id        | Update only the fields you send          | 200     |
-| DELETE | /tasks/:id        | Delete a task                            | 204     |
 
-Errors: 400 for validation failures or invalid JSON, 404 for an unknown task or route.
+| Method | Path     | Auth     | Description          |
+|--------|----------|----------|----------------------|
+| GET    | /health  | public   | Health check         |
+| GET    | /items   | API key  | List items           |
+| POST   | /items   | API key  | Create an item       |
 
-## Sample requests
+`POST /items` body:
 
-Health check:
+```json
+{ "name": "Pen", "price": 2.5, "quantity": 3 }
+```
 
-    curl http://localhost:3000/health
+- `name`: string, 1–100 chars (required)
+- `price`: number > 0 (required)
+- `quantity`: integer >= 0 (optional, default 0)
+- Unknown fields are rejected.
 
-Create:
+## Error format
 
-    curl -X POST http://localhost:3000/tasks -H "Content-Type: application/json" -d '{"title":"Learn Node.js","description":"Build a CRUD API"}'
+All errors look like this:
 
-List all, or filter by status:
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request payload is invalid.",
+    "details": [{ "field": "price", "message": "price must be greater than 0" }]
+  }
+}
+```
 
-    curl http://localhost:3000/tasks
-    curl "http://localhost:3000/tasks?status=done"
+| Status | Code               | When                        |
+|--------|--------------------|-----------------------------|
+| 400    | INVALID_JSON       | Malformed JSON body         |
+| 401    | UNAUTHORIZED       | API key missing             |
+| 403    | FORBIDDEN          | API key wrong               |
+| 404    | NOT_FOUND          | Unknown route               |
+| 413    | PAYLOAD_TOO_LARGE  | Body over 100kb             |
+| 422    | VALIDATION_ERROR   | Payload fails validation    |
+| 500    | INTERNAL_ERROR     | Unexpected server error     |
 
-Read one:
+## Testing the protected routes
 
-    curl http://localhost:3000/tasks/1
+### Manual (curl)
 
-Update part of a task:
+```bash
+# 1. No key -> 401
+curl -i -X POST localhost:3000/items -H "Content-Type: application/json" \
+  -d '{"name":"Pen","price":2.5}'
 
-    curl -X PATCH http://localhost:3000/tasks/1 -H "Content-Type: application/json" -d '{"status":"done"}'
+# 2. Wrong key -> 403
+curl -i -X POST localhost:3000/items -H "x-api-key: wrong" \
+  -H "Content-Type: application/json" -d '{"name":"Pen","price":2.5}'
 
-Replace a task:
+# 3. Invalid payload -> 422
+curl -i -X POST localhost:3000/items -H "x-api-key: your-secret-key" \
+  -H "Content-Type: application/json" -d '{"name":"","price":-5}'
 
-    curl -X PUT http://localhost:3000/tasks/1 -H "Content-Type: application/json" -d '{"title":"Learn Node.js","description":"updated","status":"in_progress"}'
+# 4. Valid request -> 201
+curl -i -X POST localhost:3000/items -H "x-api-key: your-secret-key" \
+  -H "Content-Type: application/json" -d '{"name":"Pen","price":2.5,"quantity":3}'
 
-Delete:
+# 5. List items -> 200
+curl -i localhost:3000/items -H "x-api-key: your-secret-key"
+```
 
-    curl -X DELETE http://localhost:3000/tasks/1
+### Postman / Insomnia
 
-Validation error example:
+Add a header `x-api-key: your-secret-key` to the request and set the body to raw JSON.
 
-    curl -X POST http://localhost:3000/tasks -H "Content-Type: application/json" -d '{"title":"","status":"bad"}'
+### Automated
 
-Response (400):
-
-    {"error":"Validation failed","details":["title must be a non-empty string","status must be one of: todo, in_progress, done"]}
-
-On Windows PowerShell, use `curl.exe` and put the JSON in double quotes with escaped inner quotes, or use Postman.
+```bash
+npm test
+```
+(Requires Node 18+.)
